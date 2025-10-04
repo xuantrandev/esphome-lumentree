@@ -128,6 +128,7 @@ void LumentreeBle::assemble(const uint8_t *data, uint16_t length) {
       (this->frame_buffer_[1] != LUMENTREE_MODBUS_FUNCTION_READ &&
        this->frame_buffer_[1] != LUMENTREE_MODBUS_FUNCTION_READ_INPUT)) {
     ESP_LOGW(TAG, "Invalid MODBUS response header, clearing buffer");
+    wrong_mac_ = true;
     this->frame_buffer_.clear();
     return;
   }
