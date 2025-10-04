@@ -49,6 +49,7 @@ void LumentreeBle::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t
       auto *service = this->parent_->get_service(LUMENTREE_SERVICE_UUID);
       if (service == nullptr) {
         ESP_LOGE(TAG, "[%s] No service found at 0x%04X", this->parent_->address_str().c_str(), LUMENTREE_SERVICE_UUID);
+        wrong_mac_ = true;
         break;
       }
 
@@ -56,6 +57,7 @@ void LumentreeBle::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t
       if (ble_char == nullptr) {
         ESP_LOGE(TAG, "[%s] No characteristic found at 0x%04X", this->parent_->address_str().c_str(),
                  LUMENTREE_NOTIFY_CHARACTERISTIC_UUID);
+        
         break;
       }
 
@@ -299,11 +301,15 @@ void LumentreeBle::decode_(const std::vector<uint8_t> &data) {
 }
 
 void LumentreeBle::decode_system_status_registers_(const std::vector<uint8_t> &data) {
+  onlinestatus_ = true;
   auto lumentree_get_16bit = [&](size_t i) -> uint16_t {
     return (uint16_t(data[i + 0]) << 8) | (uint16_t(data[i + 1]) << 0);
   };
 
   uint8_t byte_count = data[2];
+  char json_buffer[300] = {0};
+  char cell_entry[32];
+  snprintf(json_buffer, sizeof(json_buffer), "{");
   ESP_LOGI(TAG, "Decoding System Status registers (0-94)");
 
   // 0x03-0x07: Serial Number (5 registers, ASCII)
@@ -332,33 +338,59 @@ void LumentreeBle::decode_system_status_registers_(const std::vector<uint8_t> &d
         break;
       case 11:  // 0x0B: Battery Voltage
         this->publish_state_(this->battery_voltage_sensor_, register_value * 0.01f);
+        cell_entry[32];
+        snprintf(cell_entry, sizeof(cell_entry), "\"vbat\":%d", register_value);
+        strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
+        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       case 12:  // 0x0C: Battery Current
         this->publish_state_(this->battery_current_sensor_, (int16_t) register_value * 0.01f);
+        cell_entry[32];
+        snprintf(cell_entry, sizeof(cell_entry), "\"bcur\":%d", register_value);
+        strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
+        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       case 13:  // 0x0D: AC Output Voltage
         this->publish_state_(this->ac_output_voltage_sensor_, register_value * 0.1f);
         break;
       case 15:  // 0x0F: AC Input Voltage
         this->publish_state_(this->ac_input_voltage_sensor_, register_value * 0.1f);
+        cell_entry[32];
+        snprintf(cell_entry, sizeof(cell_entry), "\"vgr\":%d", register_value);
+        strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
+        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       case 16:  // 0x10: AC Output Frequency
         this->publish_state_(this->ac_output_frequency_sensor_, register_value * 0.01f);
         break;
       case 17:  // 0x11: AC Input Frequency
         this->publish_state_(this->ac_input_frequency_sensor_, register_value * 0.01f);
+        cell_entry[32];
+        snprintf(cell_entry, sizeof(cell_entry), "\"fgr\":%d", register_value);
+        strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
+        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       case 18:  // 0x12: AC Output Power
         this->publish_state_(this->ac_power_sensor_, register_value * 1.0f);
         break;
       case 20:  // 0x14: PV Input Voltage
         this->publish_state_(this->pv_voltage_sensor_, register_value * 1.0f);
+        cell_entry[32];
+        snprintf(cell_entry, sizeof(cell_entry), "\"vdc1\":%d", register_value);
+        strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
+        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       case 22:  // 0x16: PV Input Power
         this->publish_state_(this->pv_power_sensor_, register_value * 1.0f);
+        snprintf(cell_entry, sizeof(cell_entry), "\"pdc1\":%d", register_value);
+        strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
+        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       case 24:  // 0x18: IGBT Temperature
         this->publish_state_(this->device_temperature_sensor_, (register_value - 1000) * 0.1f);
+        snprintf(cell_entry, sizeof(cell_entry), "\"dctemp\":%d", register_value);
+        strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
+        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       case 37:  // 0x25: Battery Status
         this->publish_state_(this->battery_connected_binary_sensor_, register_value != 2);
@@ -366,9 +398,16 @@ void LumentreeBle::decode_system_status_registers_(const std::vector<uint8_t> &d
         break;
       case 50:  // 0x32: Battery State of Charge
         this->publish_state_(this->battery_soc_sensor_, register_value * 1.0f);
+        snprintf(cell_entry, sizeof(cell_entry), "\"soc\":%d", register_value);
+        strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
+        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
+
         break;
       case 53:  // 0x35: Grid Input Power (signed)
         this->publish_state_(this->grid_power_sensor_, (int16_t) register_value * 1.0f);
+        snprintf(cell_entry, sizeof(cell_entry), "\"pgr\":%d", register_value);
+        strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
+        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       case 54:  // 0x36: Grid Export Power
         this->publish_state_(this->grid_export_sensor_, (int16_t) register_value * 1.0f);
@@ -381,9 +420,15 @@ void LumentreeBle::decode_system_status_registers_(const std::vector<uint8_t> &d
         break;
       case 61:  // 0x3D: Battery Power (signed)
         this->publish_state_(this->battery_power_sensor_, (int16_t) register_value * 1.0f);
+        snprintf(cell_entry, sizeof(cell_entry), "\"pbat\":%d", register_value);
+        strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
+        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       case 67:  // 0x43: Load Power
         this->publish_state_(this->load_power_sensor_, register_value * 1.0f);
+        snprintf(cell_entry, sizeof(cell_entry), "\"pl\":%d", register_value);
+        strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
+        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       case 68:  // 0x44: Operation Mode
         this->publish_state_(this->operation_mode_text_sensor_, this->operation_mode_to_string_(register_value));
@@ -396,9 +441,15 @@ void LumentreeBle::decode_system_status_registers_(const std::vector<uint8_t> &d
         break;
       case 72:  // 0x48: PV Input Voltage 2
         this->publish_state_(this->pv2_voltage_sensor_, register_value * 1.0f);
+        snprintf(cell_entry, sizeof(cell_entry), "\"vdc2\":%d", register_value);
+        strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
+        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       case 74:  // 0x4A: PV Input Power 2
         this->publish_state_(this->pv2_power_sensor_, register_value * 1.0f);
+        snprintf(cell_entry, sizeof(cell_entry), "\"pdc2\":%d", register_value);
+        strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
+        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       case 94:  // 0x5E: Device Type Image
         this->publish_state_(this->device_type_image_sensor_, register_value * 1.0f);
@@ -408,6 +459,13 @@ void LumentreeBle::decode_system_status_registers_(const std::vector<uint8_t> &d
         break;
     }
   }
+
+  strncat(json_buffer, "}", sizeof(json_buffer) - strlen(json_buffer) - 1);
+  // if ((this->data_text_sensor_ != nullptr) && (this->fastdata_)) {
+  //   this->data_text_sensor_->publish_state(json_buffer);  
+  // }
+  ESP_LOGW(TAG, "json: %s", json_buffer);
+  
 
   if (byte_count >= 10 * 2) {
     uint16_t device_type = lumentree_get_16bit(3 + 0 * 2);
@@ -702,33 +760,60 @@ void LumentreeBle::decode_daily_statistics_registers_(const std::vector<uint8_t>
     return;
   }
 
+  char json_buffer[300] = {0};
+  char cell_entry[32];
+  snprintf(json_buffer, sizeof(json_buffer), "{");
+
   for (uint8_t register_index = 0; register_index < 8; register_index++) {
     uint16_t register_value = lumentree_get_16bit(3 + register_index * 2);
 
     switch (register_index) {
       case 0:
         this->publish_state_(this->today_pv_production_sensor_, register_value * 0.1f);
+        snprintf(cell_entry, sizeof(cell_entry), "\"pvtd\":%d", register_value);
+        strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
+        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       case 1:
         this->publish_state_(this->today_essential_load_sensor_, register_value * 0.1f);
+        snprintf(cell_entry, sizeof(cell_entry), "\"ltd\":%d", register_value);
+        strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
+        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       case 2:
         this->publish_state_(this->today_grid_consumption_sensor_, register_value * 0.1f);
+        snprintf(cell_entry, sizeof(cell_entry), "\"eim\":%d", register_value);
+        strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
+        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       case 3:
         this->publish_state_(this->today_total_consumption_sensor_, register_value * 0.1f);
+        // snprintf(cell_entry, sizeof(cell_entry), "\"eim\":%d", register_value);
+        // strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
+        // strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       case 4:
         this->publish_state_(this->today_battery_charging_sensor_, register_value * 0.1f);
+        snprintf(cell_entry, sizeof(cell_entry), "\"ech\":%d", register_value);
+        strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
+        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       case 5:
         this->publish_state_(this->today_battery_discharge_sensor_, register_value * 0.1f);
+        snprintf(cell_entry, sizeof(cell_entry), "\"edch\":%d", register_value);
+        strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
+        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       default:
         ESP_LOGVV(TAG, "Daily Statistics Register %d: 0x%04X (%d)", register_index, register_value, register_value);
         break;
     }
   }
+  strncat(json_buffer, "}", sizeof(json_buffer) - strlen(json_buffer) - 1);
+  // if ((this->data_text_sensor_ != nullptr) && (this->fastdata_)) {
+  //   this->data_text_sensor_->publish_state(json_buffer);  
+  // }
+  ESP_LOGW(TAG, "json: %s", json_buffer);
 }
 
 std::string LumentreeBle::generate_device_model_(uint16_t device_type, uint16_t power_rating, bool light_engine) {

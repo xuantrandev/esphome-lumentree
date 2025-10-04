@@ -161,10 +161,30 @@ class LumentreeBle : public esphome::ble_client::BLEClientNode, public PollingCo
   void send_command(const std::vector<uint8_t> &payload);
   void read_registers(uint8_t function, uint16_t start_register, uint16_t register_count);
 
+  bool get_online_status() const { return onlinestatus_; }
+  void set_fastdata(bool fastdata) { this->fastdata_ = fastdata; }
+  uint64_t get_mac() const { return mac_address_; }
+  void get_setting(void);
+  bool is_wrong_mac() { bool tmp = wrong_mac_; wrong_mac_ = false; return tmp; };
+  void changemac(uint64_t address){
+    this->parent_->set_address(address);
+    this->mac_address_ = address;
+  };
+  void set_inverter_connected_binary_sensor(binary_sensor::BinarySensor *inverter_connected_binary_sensor) {
+    inverter_connected_binary_sensor_ = inverter_connected_binary_sensor;
+  }
+  
+
+
  protected:
+  bool wrong_mac_{false};
+  bool onlinestatus_{false};
+  bool fastdata_{false};
+  uint64_t mac_address_{0};
   binary_sensor::BinarySensor *grid_connected_binary_sensor_;
   binary_sensor::BinarySensor *battery_connected_binary_sensor_;
   binary_sensor::BinarySensor *pv2_support_binary_sensor_;
+  binary_sensor::BinarySensor *inverter_connected_binary_sensor_;
 
   sensor::Sensor *battery_voltage_sensor_;
   sensor::Sensor *battery_current_sensor_;
