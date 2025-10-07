@@ -163,7 +163,7 @@ class LumentreeBle : public esphome::ble_client::BLEClientNode, public PollingCo
 
   bool get_online_status() const { return onlinestatus_; }
   void set_fastdata(bool fastdata) { this->fastdata_ = fastdata; }
-  uint64_t get_mac() const { return mac_address_; }
+  uint64_t get_mac() const { return this->parent_->get_address(); }
   void get_setting(void);
   bool is_wrong_mac() { bool tmp = wrong_mac_; wrong_mac_ = false; return tmp; };
   void changemac(uint64_t address){
