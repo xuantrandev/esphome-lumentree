@@ -450,7 +450,7 @@ void LumentreeBle::decode_system_status_registers_(const std::vector<uint8_t> &d
         this->publish_state_(this->pv2_power_sensor_, register_value * 1.0f);
         snprintf(cell_entry, sizeof(cell_entry), "\"pdc2\":%d", register_value);
         strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
-        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
+        // strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       case 94:  // 0x5E: Device Type Image
         this->publish_state_(this->device_type_image_sensor_, register_value * 1.0f);
@@ -803,7 +803,7 @@ void LumentreeBle::decode_daily_statistics_registers_(const std::vector<uint8_t>
         this->publish_state_(this->today_battery_discharge_sensor_, register_value * 0.1f);
         snprintf(cell_entry, sizeof(cell_entry), "\"edch\":%d", register_value);
         strncat(json_buffer, cell_entry, sizeof(json_buffer) - strlen(json_buffer) - 1);
-        strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
+        // strncat(json_buffer, ",", sizeof(json_buffer) - strlen(json_buffer) - 1);
         break;
       default:
         ESP_LOGVV(TAG, "Daily Statistics Register %d: 0x%04X (%d)", register_index, register_value, register_value);
